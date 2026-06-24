@@ -22,7 +22,15 @@ reseau_gps_abidjan = {
     }
 }
 
-# --- 2. CATALOGUE DU CONCESSIONNAIRE DE CAMIONS ---
+# --- 2. BASE DE DONNÉES DES STATIONS-SERVICES RÉELLES ---
+stations_services_abidjan = {
+    "TotalEnergies - Autoroute du Nord (Yopougon)": {"zone": "Zone Industrielle Yopougon", "prix_litre_gasoil": 715},
+    "Shell - Boulevard VGE (Marcory)": {"zone": "Carrefour Playce (Marcory)", "prix_litre_gasoil": 715},
+    "Ola Energy - Zone Portuaire (Treichville)": {"zone": "Port de Treichville", "prix_litre_gasoil": 715},
+    "Petroci - Boulevard Latrille (Cocody)": {"zone": "Abidjan Mall (Riviera)", "prix_litre_gasoil": 715}
+}
+
+# --- 3. CATALOGUE DU CONCESSIONNAIRE DE CAMIONS ---
 concessionnaire_camions = {
     "entree_de_gamme": {
         "marque": "Renault Trucks",
@@ -47,35 +55,63 @@ concessionnaire_camions = {
     }
 }
 
-# --- 3. INITIALISATION DU PROFIL DU JOUEUR ---
+# --- 4. INITIALISATION DU PROFIL DU JOUEUR ---
 profil_joueur = {
     "nom_chauffeur": "Kashif",
-    "argent_fcfa": 40000000,  # 40 Millions CFA de départ pour nos tests
+    "argent_fcfa": 40000000,  
     "camion_actuel": {
         "marque": "Renault Trucks",
         "modele": "Kerax d'occasion",
         "puissance_ch": 320,
         "consommation_100km": 30,
         "carburant_max_litres": 400,
-        "carburant_actuel_litres": 200
+        "carburant_actuel_litres": 45  # Réservoir presque vide pour tester le plein !
     },
     "camions_possedes": ["Renault Kerax d'occasion"]
 }
 
-# --- 4. ÉTAT DE LA MÉTÉO EN DIRECT ---
+# --- 5. ÉTAT DE LA MÉTÉO EN DIRECT ---
 meteo_actuelle_abidjan = {
     "temps": "Pluie d'orage",
     "visibilite": "Basse",
-    "adherence_route": 0.5  # La route glisse, attention aux freinages !
+    "adherence_route": 0.5
 }
 
 
-# --- 5. LOGIQUE DU GPS ET DE LA CONDUITE ---
+# --- 6. LOGIQUE DU GPS, DE LA CONDUITE ET DES STATIONS ---
+
+def faire_le_plein(profil, nom_station):
+    """Permet au joueur de s'arrêter dans une vraie station pour remplir le réservoir."""
+    if nom_station not in stations_services_abidjan:
+        print("❌ Station-service introuvable.")
+        return
+        
+    station = stations_services_abidjan[nom_station]
+    camion = profil["camion_actuel"]
+    
+    # Calcul de l'espace libre dans le réservoir
+    litres_a_ajouter = camion["carburant_max_litres"] - camion["carburant_actuel_litres"]
+    
+    if litres_a_ajouter <= 0:
+        print(f"⛽ Ton réservoir est déjà plein chez {nom_station} !")
+        return
+        
+    coût_total = int(litres_a_ajouter * station["prix_litre_gasoil"])
+    
+    print(f"⛽ Arrêt chez {nom_station}...")
+    print(f"Achat de {int(litres_a_ajouter)} Litres de Gasoil à {station['prix_litre_gasoil']} FCFA/L.")
+    
+    if profil["argent_fcfa"] >= coût_total:
+        profil["argent_fcfa"] -= coût_total
+        camion["carburant_actuel_litres"] = camion["carburant_max_litres"]
+        print(f"✅ Plein réussi ! Coût : -{coût_total} FCFA.")
+        print(f"💰 Solde restant : {profil['argent_fcfa']} FCFA\n")
+    else:
+        print("❌ Tu n'as pas assez d'argent pour faire le plein complet !\n")
+
 
 def simuler_trajet(profil, depart, destination, poids_chargement_tonnes, gain_mission):
     """Simule la conduite en temps réel entre deux points d'Abidjan."""
-    
-    # Vérifier si la route existe dans le GPS
     if depart in reseau_gps_abidjan and destination in reseau_gps_abidjan[depart]:
         distance = reseau_gps_abidjan[depart][destination]
     else:
@@ -84,84 +120,61 @@ def simuler_trajet(profil, depart, destination, poids_chargement_tonnes, gain_mi
 
     print(f"🛣️ Navigation GPS : Départ de {depart} -> Destination {destination}")
     print(f"📏 Distance : {distance} km | Chargement : {poids_chargement_tonnes} Tonnes")
-    print(f"🌧️ Météo actuelle : {meteo_actuelle_abidjan['temps']} (Adhérence : {meteo_actuelle_abidjan['adherence_route']})")
     print("------------------------------------------")
 
-    # Calcul de la consommation réelle (plus le camion est lourd, plus il consomme)
     conso_base = profil["camion_actuel"]["consommation_100km"]
     conso_reelle_100km = conso_base + (poids_chargement_tonnes * 0.4)
     carburant_consomme = (distance / 100) * conso_reelle_100km
     
-    # Vérification du réservoir
+    # Vérification de la panne sèche
     if profil["camion_actuel"]["carburant_actuel_litres"] < carburant_consomme:
-        print("❌ Panne sèche en plein trajet ! Tu as dû payer une dépanneuse (-50 000 FCFA).")
+        print(f"❌ PANNE SÈCHE sur la route entre {depart} et {destination} !")
+        print("⚠️ Tu as dû appeler une dépanneuse d'urgence. Frais : -50 000 FCFA.")
         profil["argent_fcfa"] -= 50000
+        profil["camion_actuel"]["carburant_actuel_litres"] = 10 # Remorqué avec un fond de cuve
+        print(f"💰 Solde actuel : {profil['argent_fcfa']} FCFA\n")
         return
 
-    # Mise à jour du réservoir
     profil["camion_actuel"]["carburant_actuel_litres"] -= carburant_consomme
     
-    # Simulation des frais de carburant (Ex: 700 FCFA le litre de gasoil)
-    coût_carburant = int(carburant_consomme * 700)
-    
-    # Simulation d'une amende aléatoire (Ex: radar de vitesse sur le Boulevard VGE ou l'Autoroute)
+    # Pas de coût carburant automatique ici, car le joueur paie lui-même en station !
     amende = 0
     import random
-    if random.choice([True, False]): # 50% de chance d'avoir un contrôle de police
+    if random.choice([True, False]):
         amende = 10000
     
-    # Calcul du bilan financier final
-    mettre_a_jour_finances(profil, gain_mission, coût_carburant, amende)
+    mettre_a_jour_finances(profil, gain_mission, amende)
 
 
-def mettre_a_jour_finances(profil, gain_mission, depense_carburant, amende_infraction):
+def mettre_a_jour_finances(profil, gain_mission, amende_infraction):
     """Calcule et affiche le bilan financier d'un trajet."""
-    nouveau_solde = profil["argent_fcfa"] + gain_mission - depense_carburant - amende_infraction
+    nouveau_solde = profil["argent_fcfa"] + gain_mission - amende_infraction
     profil["argent_fcfa"] = nouveau_solde
     
     print("==========================================")
     print("       RAPPORT DE FIN DE MISSION          ")
     print("==========================================")
     print(f"💰 Gain de la course  : +{gain_mission} FCFA")
-    print(f"⛽ Coût du gasoil     : -{depense_carburant} FCFA")
     if amende_infraction > 0:
         print(f"⚠️ Amende Police      : -{amende_infraction} FCFA")
     print(f"👉 Solde de ton compte: {profil['argent_fcfa']} FCFA")
-    print(f"⛽ Réservoir restant  : {int(profil['camion_actuel']['carburant_actuel_litres'])} Litres")
+    print(f"⛽ Jauge Carburant    : {int(profil['camion_actuel']['carburant_actuel_litres'])} / {profil['camion_actuel']['carburant_max_litres']} Litres")
     print("==========================================\n")
 
 
-def tentative_achat_camion(profil, categorie_camion):
-    """Gère le processus d'achat d'un nouveau véhicule."""
-    camion_choisi = concessionnaire_camions[categorie_camion]
-    prix = camion_choisi["prix_fcfa"]
-    nom_complet = f"{camion_choisi['marque']} {camion_choisi['modele']}"
-    
-    print(f"🛒 Concessionnaire : Tentative d'achat de {nom_complet}...")
-    
-    if profil["argent_fcfa"] >= prix:
-        profil["argent_fcfa"] -= prix
-        profil["camions_possedes"].append(nom_complet)
-        profil["camion_actuel"] = camion_choisi
-        print(f"🎉 Succès ! Tu as acheté le {nom_complet}. C'est ton nouveau véhicule actif.")
-        print(f"💰 Nouveau solde : {profil['argent_fcfa']} FCFA\n")
-    else:
-        manque = prix - profil["argent_fcfa"]
-        print(f"❌ Échec ! Solde insuffisant. Il te manque {manque} FCFA.\n")
-
-
-# --- 6. ZONE DE TEST (Lancement du jeu) ---
+# --- 7. ZONE DE TEST (Lancement du scénario de jeu) ---
 if __name__ == "__main__":
-    print(f"🚚 Bienvenue sur les routes d'Abidjan, Chauffeur {profil_joueur['nom_chauffeur']} !\n")
+    print(f"🚚 Session de conduite de {profil_joueur['nom_chauffeur']}\n")
     
-    # Mission 1 : Partir du Port de Treichville pour livrer 32 Tonnes au Carrefour Playce Marcory
+    # Étape A : Le joueur commence la session avec seulement 45L de carburant.
+    # Il va au Port de Treichville et décide de faire le plein avant de charger.
+    faire_le_plein(profil_joueur, "Ola Energy - Zone Portuaire (Treichville)")
+    
+    # Étape B : Maintenant que le réservoir est plein, il prend une grosse mission vers Yopougon
     simuler_trajet(
         profil=profil_joueur,
         depart="Port de Treichville",
-        destination="Carrefour Playce (Marcory)",
-        poids_chargement_tonnes=32,
-        gain_mission=250000  # Payé 250 000 FCFA
+        destination="Zone Industrielle Yopougon",
+        poids_chargement_tonnes=35,
+        gain_mission=300000
     )
-    
-    # Mission 2 : Tenter d'acheter le Mercedes-Benz Actros chez le concessionnaire
-    tentative_achat_camion(profil_joueur, "milieu_de_gamme")
